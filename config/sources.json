@@ -1,0 +1,90 @@
+{
+  "domain": "competition_law",
+  "domain_keywords": [
+    "competition", "antitrust", "cartel", "merger", "state aid",
+    "abuse of dominant position", "market concentration",
+    "hospodarska sutaz", "kartel", "fuzia", "statna pomoc",
+    "zneuzitie dominantneho postavenia", "koncentracia",
+    "versenyjog", "kartell", "fuzio", "allami tamogatas",
+    "erofolenyvissza eles", "piaci koncentracio"
+  ],
+  "jurisdictions": {
+    "SK": {
+      "label": "[SK]",
+      "name": "Slovenska republika",
+      "language": "sk",
+      "sources": [
+        {
+          "id": "slov_lex_competition",
+          "name": "Zakon o ochrane hospodarskej sutaze 187/2021",
+          "url": "https://www.slov-lex.sk/pravne-predpisy/SK/ZZ/2021/187/",
+          "type": "legislation",
+          "enabled": true
+        },
+        {
+          "id": "slov_lex_old",
+          "name": "Zakon o ochrane hospodarskej sutaze 136/2001 (stary)",
+          "url": "https://www.slov-lex.sk/pravne-predpisy/SK/ZZ/2001/136/",
+          "type": "legislation",
+          "enabled": true
+        },
+        {
+          "id": "pmu_decisions",
+          "name": "PMU rozhodnutia",
+          "url": "https://www.antimon.gov.sk/rozhodnutia/",
+          "type": "authority_decisions",
+          "enabled": true
+        },
+        {
+          "id": "pmu_main",
+          "name": "Protimonopolny urad SR",
+          "url": "https://www.antimon.gov.sk",
+          "type": "authority",
+          "enabled": true
+        }
+      ]
+    },
+    "EU": {
+      "label": "[EU]",
+      "name": "European Union",
+      "language": "en",
+      "sources": [
+        {
+          "id": "tfeu_101_102",
+          "name": "TFEU Articles 101-102",
+          "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:12016E101",
+          "type": "treaty",
+          "enabled": true
+        },
+        {
+          "id": "regulation_1_2003",
+          "name": "Council Regulation (EC) No 1/2003",
+          "url": "https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX:32003R0001",
+          "type": "regulation",
+          "enabled": true
+        },
+        {
+          "id": "eu_merger_regulation",
+          "name": "EU Merger Regulation 139/2004",
+          "url": "https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX:32004R0139",
+          "type": "regulation",
+          "enabled": true
+        },
+        {
+          "id": "eu_commission_decisions",
+          "name": "EU Commission Competition Decisions",
+          "url": "https://competition-cases.ec.europa.eu/",
+          "type": "authority_decisions",
+          "enabled": true
+        },
+        {
+          "id": "eur_lex_competition",
+          "name": "EUR-Lex Competition Law",
+          "url": "https://eur-lex.europa.eu/browse/summaries.html?locale=en#arrow_8",
+          "type": "legislation",
+          "enabled": true
+        }
+      ]
+    }
+  }
+}

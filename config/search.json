@@ -1,0 +1,12 @@
+{
+  "chunk_size": 1000,
+  "chunk_overlap": 200,
+  "vector_top_k": 10,
+  "fts_top_k": 10,
+  "final_top_k": 5,
+  "score_threshold": 0.3,
+  "rrf_k": 60,
+  "vector_weight": 0.6,
+  "fts_weight": 0.4,
+  "max_query_length": 500
+}

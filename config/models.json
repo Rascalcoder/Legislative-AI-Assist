@@ -1,0 +1,43 @@
+{
+  "providers": {
+    "openai": {
+      "base_url": "https://api.openai.com/v1",
+      "env_key": "OPENAI_API_KEY"
+    },
+    "anthropic": {
+      "base_url": "https://api.anthropic.com",
+      "env_key": "ANTHROPIC_API_KEY"
+    },
+    "google": {
+      "env_key": "GOOGLE_API_KEY"
+    }
+  },
+  "roles": {
+    "light": {
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "temperature": 0.1,
+      "max_tokens": 2000,
+      "description": "Fast, cheap - 90% of queries"
+    },
+    "deep": {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5-20250929",
+      "temperature": 0.1,
+      "max_tokens": 4000,
+      "description": "Complex legal analysis"
+    },
+    "async": {
+      "provider": "google",
+      "model": "gemini-2.0-flash-lite",
+      "temperature": 0.0,
+      "max_tokens": 2000,
+      "description": "Background document processing"
+    }
+  },
+  "embedding": {
+    "provider": "openai",
+    "model": "text-embedding-3-large",
+    "dimensions": 1536
+  }
+}

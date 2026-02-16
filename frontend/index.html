@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- Primary Meta Tags -->
+    <title>Competition Law AI Assistant | SK & EU Legal AI</title>
+    <meta name="title" content="Competition Law AI Assistant | SK & EU Legal AI">
+    <meta name="description" content="AI-powered competition law assistant for Slovak and EU legislation. Search Slov-Lex, EUR-Lex, PMU decisions, and EU Commission rulings. Supports Slovak, Hungarian, and English.">
+    <meta name="keywords" content="competition law, antitrust, Slovak competition law, EU competition law, legal AI, Slov-Lex, EUR-Lex, PMU, kartel, hospodarska sutaz, versenyjog, AI assistant">
+    <meta name="author" content="Legislative AI Assist">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://yourdomain.com/">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://yourdomain.com/">
+    <meta property="og:title" content="Competition Law AI Assistant | SK & EU Legal AI">
+    <meta property="og:description" content="AI-powered competition law assistant for Slovak and EU legislation. Supports Slovak, Hungarian, and English.">
+    <meta property="og:image" content="https://yourdomain.com/og-image.png">
+    <meta property="og:site_name" content="Competition Law AI Assistant">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:locale:alternate" content="sk_SK">
+    <meta property="og:locale:alternate" content="hu_HU">
+    
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:url" content="https://yourdomain.com/">
+    <meta name="twitter:title" content="Competition Law AI Assistant | SK & EU Legal AI">
+    <meta name="twitter:description" content="AI-powered competition law assistant for Slovak and EU legislation. Supports SK, HU, EN.">
+    <meta name="twitter:image" content="https://yourdomain.com/twitter-image.png">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+    <link rel="manifest" href="site.webmanifest">
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Styles (Tailwind built via PostCSS in production) -->
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="font-sans bg-gray-50 text-gray-900">
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <aside class="w-72 bg-white border-r border-gray-200 flex flex-col p-6 max-md:hidden">
+            <div class="flex items-center gap-3 mb-8">
+                <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+                    <rect width="40" height="40" rx="8" fill="#4F46E5"/>
+                    <path d="M20 8L28 14V26L20 32L12 26V14L20 8Z" stroke="white" stroke-width="2"/>
+                </svg>
+                <div>
+                    <h1 class="text-lg font-bold">Competition Law</h1>
+                    <p class="text-xs text-gray-400">AI Assistant</p>
+                </div>
+            </div>
+
+            <nav class="flex flex-col gap-2 flex-1">
+                <button class="nav-item active flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all" data-view="chat">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M2 5C2 3.89543 2.89543 3 4 3H16C17.1046 3 18 3.89543 18 5V12C18 13.1046 17.1046 14 16 14H10L6 17V14H4C2.89543 14 2 13.1046 2 12V5Z"/>
+                    </svg>
+                    Chat
+                </button>
+
+                <button class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all" data-view="search">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"/>
+                    </svg>
+                    Search
+                </button>
+
+                <button class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all" data-view="documents">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"/>
+                    </svg>
+                    Documents
+                </button>
+            </nav>
+
+            <div class="pt-6 border-t border-gray-200">
+                <p class="text-xs font-semibold text-gray-700 mb-2">Jurisdictions</p>
+                <div class="flex flex-col gap-1.5 mb-3">
+                    <span class="inline-flex items-center gap-1.5 px-2 py-1 bg-eu-bg text-eu-text rounded text-xs font-medium border border-eu-border">[EU] EUR-Lex / Commission</span>
+                    <span class="inline-flex items-center gap-1.5 px-2 py-1 bg-sk-bg text-sk-text rounded text-xs font-medium border border-sk-border">[SK] Slov-Lex / PMU</span>
+                </div>
+                <p class="text-xs font-semibold text-gray-700 mb-2">Languages</p>
+                <div class="flex flex-col gap-1.5 mb-3">
+                    <span class="text-xs text-gray-500">SK Slovencina / HU Magyar / EN English</span>
+                </div>
+                <p class="text-[11px] text-gray-400 leading-relaxed">AI detects your language automatically and responds accordingly.</p>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-hidden">
+            <!-- Chat View -->
+            <div id="chatView" class="view active flex-col h-full">
+                <div class="px-8 py-6 bg-white border-b border-gray-200 flex justify-between items-center">
+                    <h2 class="text-2xl font-bold">Competition Law Assistant</h2>
+                    <button id="newChatBtn" class="px-4 py-2 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition-all">New Chat</button>
+                </div>
+
+                <div class="flex-1 flex flex-col overflow-hidden">
+                    <div id="chatMessages" class="flex-1 overflow-y-auto px-8 py-8">
+                        <div class="welcome-message max-w-2xl mx-auto text-center py-12 px-6">
+                            <h3 class="text-2xl font-bold mb-4">Competition Law AI Assistant</h3>
+                            <p class="text-gray-500 leading-relaxed mb-2">Ask questions about <strong class="text-gray-900">Slovak and EU competition law</strong> in Slovak, Hungarian, or English.</p>
+                            <p class="text-gray-500 leading-relaxed">Sources include Slov-Lex, EUR-Lex, PMU decisions, and EU Commission decisions.</p>
+
+                            <div class="mt-8 p-6 bg-gray-50 rounded-xl text-left">
+                                <p class="font-semibold text-gray-700 mb-3">Example questions:</p>
+                                <p class="text-sm text-gray-600 py-1">SK: "Ake su hlavne zasady ochrany hospodarskej sutaze podla zakona 187/2021?"</p>
+                                <p class="text-sm text-gray-600 py-1">HU: "Mi a kartelltilalom lenyege az EU versenyjogban?"</p>
+                                <p class="text-sm text-gray-600 py-1">EN: "What is the difference between TFEU Article 101 and 102?"</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="px-8 py-6 bg-white border-t border-gray-200">
+                        <div class="max-w-3xl mx-auto flex gap-3 items-end">
+                            <textarea
+                                id="chatInput"
+                                class="flex-1 px-4 py-3 border border-gray-200 rounded-xl text-sm resize-none max-h-36 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                                placeholder="Ask about competition law (SK / EU)..."
+                                rows="1"
+                            ></textarea>
+                            <button id="sendBtn" class="px-6 py-3 bg-brand-500 text-white rounded-xl text-sm font-semibold hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2">
+                                <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor">
+                                    <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search View -->
+            <div id="searchView" class="view flex-col h-full">
+                <div class="px-8 py-8 bg-white border-b border-gray-200">
+                    <h2 class="text-2xl font-bold mb-1">Hybrid Search</h2>
+                    <p class="text-gray-500 text-sm">Vector + full-text search across SK and EU competition law documents</p>
+                </div>
+
+                <div class="px-8 py-8 overflow-y-auto flex-1">
+                    <div class="max-w-3xl mx-auto mb-8 flex gap-3">
+                        <input
+                            type="text"
+                            id="searchInput"
+                            class="flex-1 px-5 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                            placeholder="Search competition law documents..."
+                        />
+                        <select id="jurisdictionFilter" class="px-4 py-3.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:border-brand-500">
+                            <option value="">All jurisdictions</option>
+                            <option value="SK">[SK] Slovak</option>
+                            <option value="EU">[EU] European Union</option>
+                        </select>
+                        <button id="searchBtn" class="px-6 py-3.5 bg-brand-500 text-white rounded-xl text-sm font-semibold hover:bg-brand-600 disabled:opacity-50 transition-all">Search</button>
+                    </div>
+
+                    <div id="searchResults" class="max-w-3xl mx-auto"></div>
+                </div>
+            </div>
+
+            <!-- Documents View -->
+            <div id="documentsView" class="view flex-col h-full">
+                <div class="px-8 py-8 bg-white border-b border-gray-200 flex justify-between items-center">
+                    <h2 class="text-2xl font-bold">Document Management</h2>
+                    <button id="uploadBtn" class="px-5 py-2.5 bg-brand-500 text-white rounded-lg text-sm font-semibold hover:bg-brand-600 transition-all flex items-center gap-2">
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M5.5 13a3.5 3.5 0 01-.369-6.98 4 4 0 117.753-1.977A4.5 4.5 0 1113.5 13H11V9.413l1.293 1.293a1 1 0 001.414-1.414l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.414V13H5.5z"/>
+                        </svg>
+                        Upload Document
+                    </button>
+                </div>
+
+                <input type="file" id="fileInput" accept=".pdf,.docx,.doc,.txt" class="hidden">
+
+                <div id="documentsList" class="px-8 py-8 overflow-y-auto flex-1">
+                    <div class="empty-state text-center py-20">
+                        <svg class="mx-auto mb-4" width="64" height="64" viewBox="0 0 64 64" fill="none">
+                            <rect x="16" y="8" width="32" height="48" rx="2" stroke="#CBD5E1" stroke-width="2"/>
+                            <line x1="24" y1="20" x2="40" y2="20" stroke="#CBD5E1" stroke-width="2"/>
+                            <line x1="24" y1="28" x2="40" y2="28" stroke="#CBD5E1" stroke-width="2"/>
+                            <line x1="24" y1="36" x2="32" y2="36" stroke="#CBD5E1" stroke-width="2"/>
+                        </svg>
+                        <p class="text-gray-600">No documents uploaded yet</p>
+                        <p class="text-sm text-gray-400">Upload competition law documents (PDF, DOCX, TXT)</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toastContainer" class="fixed top-6 right-6 z-50"></div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>
