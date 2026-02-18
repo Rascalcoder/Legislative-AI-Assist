@@ -29,6 +29,15 @@
           "enabled": true
         },
         {
+          "id": "slov_lex_judicature",
+          "name": "Slov-lex - Judikatúra (judicial decisions)",
+          "url": "https://www.slov-lex.sk/vyhladavanie?type=JUDIKATURY",
+          "type": "judicial_decisions",
+          "enabled": true,
+          "search_enabled": true,
+          "description": "Full-text searchable database of Slovak judicial decisions"
+        },
+        {
           "id": "pmu_decisions",
           "name": "PMU rozhodnutia",
           "url": "https://www.antimon.gov.sk/rozhodnutia/",
@@ -75,7 +84,21 @@
           "name": "EU Commission Competition Decisions",
           "url": "https://competition-cases.ec.europa.eu/",
           "type": "authority_decisions",
-          "enabled": true
+          "enabled": true,
+          "search_enabled": true,
+          "api_url": "https://competition-cases.ec.europa.eu/api/cases",
+          "description": "European Commission competition enforcement decisions (cartels, mergers, state aid, abuse of dominance)"
+        },
+        {
+          "id": "cjeu_case_law",
+          "name": "Court of Justice of the EU (CJEU) - EUR-Lex",
+          "url": "https://eur-lex.europa.eu/collection/eu-law/eu-case-law.html",
+          "search_url": "https://eur-lex.europa.eu/search-results.html",
+          "infocuria_url": "https://curia.europa.eu/juris/recherche.jsf",
+          "type": "judicial_decisions",
+          "enabled": true,
+          "search_enabled": true,
+          "description": "Judgments and opinions of the Court of Justice and General Court of the EU"
         },
         {
           "id": "eur_lex_competition",
