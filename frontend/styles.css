@@ -50,3 +50,16 @@
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
+
+/* Judge Assistant – step icon pulse when active */
+.judge-step .step-icon.border-brand-500 {
+    animation: stepPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes stepPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.3); }
+    50%       { box-shadow: 0 0 0 6px rgba(79, 70, 229, 0); }
+}
+
+/* Prose-lite: give the legal analysis text comfortable line spacing */
+.prose.prose-sm { line-height: 1.75; }

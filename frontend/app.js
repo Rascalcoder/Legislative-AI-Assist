@@ -1,6 +1,6 @@
 // Competition Law AI Assistant - Frontend
 // Supports: Slovak, Hungarian, English
-// Jurisdictions: SK (Slov-Lex, PMU) + EU (EUR-Lex, Commission)
+// Jurisdictions: SK (Slov-Lex, PMU) + EU (EUR-Lex, Commission, CJEU)
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || window.__API_BASE_URL__ || 'http://localhost:8000/api/v1';
 
@@ -20,6 +20,15 @@ const uploadBtn = document.getElementById('uploadBtn');
 const fileInput = document.getElementById('fileInput');
 const documentsList = document.getElementById('documentsList');
 const navItems = document.querySelectorAll('.nav-item');
+
+// Judge Assistant DOM Elements
+const judgeInput = document.getElementById('judgeInput');
+const judgeLanguage = document.getElementById('judgeLanguage');
+const judgeSubmitBtn = document.getElementById('judgeSubmitBtn');
+const judgeNewBtn = document.getElementById('judgeNewBtn');
+const judgeProgress = document.getElementById('judgeProgress');
+const judgeInputPanel = document.getElementById('judgeInputPanel');
+const judgeResultPanel = document.getElementById('judgeResultPanel');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -57,6 +66,17 @@ function initializeEventListeners() {
     chatInput.addEventListener('input', () => {
         chatInput.style.height = 'auto';
         chatInput.style.height = chatInput.scrollHeight + 'px';
+    });
+
+    // Judge Assistant
+    judgeSubmitBtn.addEventListener('click', runJudgeAnalysis);
+    judgeNewBtn.addEventListener('click', resetJudgeView);
+    judgeInput.addEventListener('keydown', (e) => {
+        // Ctrl+Enter / Cmd+Enter submits
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            e.preventDefault();
+            runJudgeAnalysis();
+        }
     });
 }
 
@@ -399,6 +419,221 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// ============================================================
+// Judge Assistant
+// ============================================================
+
+async function runJudgeAnalysis() {
+    const caseDescription = judgeInput.value.trim();
+    if (!caseDescription || caseDescription.length < 50) {
+        showToast('Please enter a case description (minimum 50 characters).', 'error');
+        return;
+    }
+
+    const language = judgeLanguage.value || undefined;
+
+    // Show progress, hide result
+    judgeSubmitBtn.disabled = true;
+    judgeProgress.classList.remove('hidden');
+    judgeResultPanel.classList.add('hidden');
+
+    // Animate step 1 immediately (topic definition happens server-side first)
+    _setStepState(1, 'active');
+
+    try {
+        const body = { case_description: caseDescription };
+        if (language) body.language = language;
+
+        const response = await fetch(`${API_BASE_URL}/judge/analyze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.detail || `HTTP ${response.status}`);
+        }
+
+        // Animate remaining steps while waiting (the server runs them sequentially)
+        await _animateSteps();
+
+        const data = await response.json();
+
+        judgeProgress.classList.add('hidden');
+        displayJudgeResult(data);
+
+    } catch (error) {
+        console.error('Judge analysis error:', error);
+        judgeProgress.classList.add('hidden');
+        showToast(`Analysis failed: ${error.message}`, 'error');
+        _resetStepStates();
+    } finally {
+        judgeSubmitBtn.disabled = false;
+    }
+}
+
+/** Animate the 4 step rows with delays to give visual feedback during the long request. */
+async function _animateSteps() {
+    const delays = [0, 4000, 12000, 20000]; // approximate times for each step
+    for (let i = 1; i <= 4; i++) {
+        await new Promise(resolve => setTimeout(resolve, i === 1 ? 0 : delays[i - 1]));
+        _setStepState(i, 'active');
+        if (i > 1) _setStepState(i - 1, 'done');
+    }
+}
+
+function _setStepState(stepNum, state) {
+    const row = document.getElementById(`step${stepNum}row`);
+    if (!row) return;
+    const icon = row.querySelector('.step-icon');
+
+    icon.classList.remove(
+        'border-gray-200', 'text-gray-400',
+        'border-brand-500', 'text-brand-500', 'bg-brand-50',
+        'border-emerald-500', 'bg-emerald-500', 'text-white',
+    );
+
+    if (state === 'active') {
+        icon.classList.add('border-brand-500', 'text-brand-500', 'bg-brand-50');
+    } else if (state === 'done') {
+        icon.classList.add('border-emerald-500', 'bg-emerald-500', 'text-white');
+        icon.innerHTML = `<svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/>
+        </svg>`;
+    } else {
+        icon.classList.add('border-gray-200', 'text-gray-400');
+    }
+}
+
+function _resetStepStates() {
+    for (let i = 1; i <= 4; i++) {
+        const row = document.getElementById(`step${i}row`);
+        if (!row) continue;
+        const icon = row.querySelector('.step-icon');
+        icon.classList.remove(
+            'border-brand-500', 'text-brand-500', 'bg-brand-50',
+            'border-emerald-500', 'bg-emerald-500', 'text-white',
+        );
+        icon.classList.add('border-gray-200', 'text-gray-400');
+        icon.textContent = String(i);
+    }
+}
+
+function resetJudgeView() {
+    judgeResultPanel.classList.add('hidden');
+    judgeProgress.classList.add('hidden');
+    _resetStepStates();
+    judgeInput.value = '';
+    judgeInput.focus();
+}
+
+function displayJudgeResult(data) {
+    // ── Step 1: Topic ────────────────────────────────────────────────────────
+    const topic = data.topic || {};
+    const issues = (topic.legal_issues || []).map(i => `<li class="text-sm text-gray-700">${escapeHtml(i)}</li>`).join('');
+    const keywords = (topic.search_keywords || []).map(k =>
+        `<span class="px-2 py-0.5 bg-gray-100 rounded text-xs text-gray-600">${escapeHtml(k)}</span>`
+    ).join('');
+    const jurisdictions = (topic.jurisdictions || []).map(j => jurisdictionBadge(j)).join(' ');
+
+    document.getElementById('judgeTopicSection').innerHTML = `
+        <div class="grid grid-cols-2 gap-4 mb-4">
+            <div>
+                <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Legal Domain</p>
+                <p class="text-sm font-medium text-gray-800">${escapeHtml(topic.legal_domain || '—')}</p>
+            </div>
+            <div>
+                <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Jurisdictions</p>
+                <div class="flex gap-1.5">${jurisdictions || '—'}</div>
+            </div>
+        </div>
+        <div class="mb-4">
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Topic Summary</p>
+            <p class="text-sm text-gray-700 leading-relaxed">${escapeHtml(topic.topic_summary || '—')}</p>
+        </div>
+        <div class="mb-4">
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Key Legal Issues</p>
+            <ul class="list-disc list-inside space-y-1">${issues || '<li class="text-sm text-gray-400">None identified</li>'}</ul>
+        </div>
+        <div>
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Search Keywords Used</p>
+            <div class="flex flex-wrap gap-2">${keywords || '<span class="text-sm text-gray-400">—</span>'}</div>
+        </div>
+    `;
+
+    // ── Step 2: Sources ───────────────────────────────────────────────────────
+    const sources = data.case_law_sources || [];
+    document.getElementById('judgeSourceCount').textContent =
+        sources.length > 0 ? `${sources.length} result${sources.length !== 1 ? 's' : ''}` : 'No results';
+
+    if (sources.length === 0) {
+        document.getElementById('judgeSourcesSection').innerHTML =
+            '<p class="text-sm text-gray-400">No case law was retrieved from the external databases for this topic.</p>';
+    } else {
+        const grouped = { SK: [], EU: [] };
+        sources.forEach(s => {
+            (grouped[s.jurisdiction] || grouped['EU']).push(s);
+        });
+
+        const renderGroup = (label, items) => {
+            if (!items.length) return '';
+            return `
+                <div class="mb-4">
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">${escapeHtml(label)}</p>
+                    <div class="flex flex-col gap-2">
+                        ${items.map(s => `
+                            <div class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                                ${jurisdictionBadge(s.jurisdiction)}
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-medium text-gray-800 truncate">${escapeHtml(s.title || s.case_number || '—')}</p>
+                                    <div class="flex items-center gap-2 mt-0.5 text-xs text-gray-400">
+                                        ${s.case_number ? `<span>${escapeHtml(s.case_number)}</span>` : ''}
+                                        ${s.date ? `<span>· ${escapeHtml(s.date)}</span>` : ''}
+                                        ${s.source ? `<span>· ${escapeHtml(s.source)}</span>` : ''}
+                                    </div>
+                                </div>
+                                ${s.url ? `<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener" class="flex-shrink-0 text-brand-500 hover:text-brand-700 text-xs font-medium">View →</a>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        };
+
+        document.getElementById('judgeSourcesSection').innerHTML =
+            renderGroup('Slovak Judicial Decisions [SK] · Slov-lex', grouped.SK) +
+            renderGroup('EU Case Law & Decisions [EU] · EC / CJEU', grouped.EU);
+    }
+
+    // ── Step 3: Case law analysis ─────────────────────────────────────────────
+    document.getElementById('judgeCaseLawSection').innerHTML =
+        `<div class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">${escapeHtml(data.case_law_analysis || '—')}</div>`;
+
+    // ── Step 4: Final analysis ────────────────────────────────────────────────
+    // Render markdown-style headings (## I. ...) as styled HTML
+    const finalText = data.final_analysis || '—';
+    document.getElementById('judgeFinalSection').innerHTML =
+        `<div class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">${renderLegalText(finalText)}</div>`;
+
+    // Show results, hide input form
+    judgeResultPanel.classList.remove('hidden');
+    judgeResultPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/**
+ * Light renderer: converts ## headings and [SK]/[EU] labels to styled HTML.
+ * Keeps whitespace-pre-wrap, just adds colour to headings and badges.
+ */
+function renderLegalText(text) {
+    return escapeHtml(text)
+        // ## heading → bold coloured line
+        .replace(/^(##\s+.+)$/gm, '<strong class="text-gray-900 block mt-4 mb-1">$1</strong>')
+        // [EU] and [SK] inline labels → coloured badges
+        .replace(/\[EU\]/g, '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-300 mx-0.5">[EU]</span>')
+        .replace(/\[SK\]/g, '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300 mx-0.5">[SK]</span>');
 }
 
 // Expose to global scope (needed for inline onclick handlers in dynamic HTML)

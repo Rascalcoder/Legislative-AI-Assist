@@ -80,17 +80,27 @@
                     </svg>
                     Documents
                 </button>
+
+                <button class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all" data-view="judge">
+                    <!-- Scales of Justice icon -->
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 3v18M3 9h18M5 9l2 6a4 4 0 008 0l2-6"/>
+                        <line x1="12" y1="3" x2="12" y2="3.01"/>
+                    </svg>
+                    Judge Assistant
+                </button>
             </nav>
 
             <div class="pt-6 border-t border-gray-200">
                 <p class="text-xs font-semibold text-gray-700 mb-2">Jurisdictions</p>
                 <div class="flex flex-col gap-1.5 mb-3">
                     <span class="inline-flex items-center gap-1.5 px-2 py-1 bg-eu-bg text-eu-text rounded text-xs font-medium border border-eu-border">[EU] EUR-Lex / Commission</span>
+                    <span class="inline-flex items-center gap-1.5 px-2 py-1 bg-eu-bg text-eu-text rounded text-xs font-medium border border-eu-border">[EU] CJEU / Curia</span>
                     <span class="inline-flex items-center gap-1.5 px-2 py-1 bg-sk-bg text-sk-text rounded text-xs font-medium border border-sk-border">[SK] Slov-Lex / PMU</span>
                 </div>
                 <p class="text-xs font-semibold text-gray-700 mb-2">Languages</p>
                 <div class="flex flex-col gap-1.5 mb-3">
-                    <span class="text-xs text-gray-500">SK Slovencina / HU Magyar / EN English</span>
+                    <span class="text-xs text-gray-500">SK Slovenčina / HU Magyar / EN English</span>
                 </div>
                 <p class="text-[11px] text-gray-400 leading-relaxed">AI detects your language automatically and responds accordingly.</p>
             </div>
@@ -190,6 +200,145 @@
                         </svg>
                         <p class="text-gray-600">No documents uploaded yet</p>
                         <p class="text-sm text-gray-400">Upload competition law documents (PDF, DOCX, TXT)</p>
+                    </div>
+                </div>
+            </div>
+            <!-- Judge Assistant View -->
+            <div id="judgeView" class="view flex-col h-full">
+                <div class="px-8 py-6 bg-white border-b border-gray-200">
+                    <h2 class="text-2xl font-bold mb-1">AI Judge Assistant</h2>
+                    <p class="text-gray-500 text-sm">4-step legal analysis: topic → case law search → analysis → application to case</p>
+                </div>
+
+                <div class="flex-1 overflow-y-auto">
+                    <!-- Input panel -->
+                    <div id="judgeInputPanel" class="px-8 py-8 max-w-4xl mx-auto">
+                        <div class="bg-white rounded-2xl shadow-sm p-8">
+                            <h3 class="text-lg font-semibold mb-1">Case Description</h3>
+                            <p class="text-sm text-gray-500 mb-6">Describe the facts of the case and the legal questions to be resolved. The assistant will search Slov-lex [SK], European Commission [EU], and CJEU [EU] for relevant case law.</p>
+
+                            <textarea
+                                id="judgeInput"
+                                class="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm resize-none focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                                rows="8"
+                                placeholder="Describe the case facts and legal questions...
+
+Example (SK): Spoločnosť A a B uzavreli dohodu o fixácii cien na trhu stavebných materiálov. Táto dohoda trvala 3 roky. Aké sú možné právne dôsledky podľa slovenského a európskeho súťažného práva?
+
+Example (EN): Company A refused to supply competitor B after B started competing with A's subsidiary. Is this a potential abuse of dominant position under TFEU Article 102 and Slovak law 187/2021?"
+                            ></textarea>
+
+                            <div class="flex items-center justify-between mt-4">
+                                <div class="flex items-center gap-3">
+                                    <label class="text-sm font-medium text-gray-700">Language:</label>
+                                    <select id="judgeLanguage" class="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:border-brand-500">
+                                        <option value="">Auto-detect</option>
+                                        <option value="sk">SK – Slovenčina</option>
+                                        <option value="hu">HU – Magyar</option>
+                                        <option value="en">EN – English</option>
+                                    </select>
+                                </div>
+                                <button id="judgeSubmitBtn" class="px-8 py-3 bg-brand-500 text-white rounded-xl text-sm font-semibold hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+                                    </svg>
+                                    Analyze Case
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Step progress bar (hidden until analysis runs) -->
+                        <div id="judgeProgress" class="hidden mt-6 bg-white rounded-2xl shadow-sm p-6">
+                            <p class="text-sm font-semibold text-gray-700 mb-4">Analysis in progress…</p>
+                            <div class="flex flex-col gap-3">
+                                <div class="judge-step flex items-center gap-3" id="step1row">
+                                    <div class="step-icon w-8 h-8 rounded-full border-2 border-gray-200 flex items-center justify-center text-xs font-bold text-gray-400 flex-shrink-0">1</div>
+                                    <div>
+                                        <p class="text-sm font-medium text-gray-600">Define legal topic</p>
+                                        <p class="text-xs text-gray-400">Identify domain, issues, jurisdictions, search keywords</p>
+                                    </div>
+                                </div>
+                                <div class="judge-step flex items-center gap-3" id="step2row">
+                                    <div class="step-icon w-8 h-8 rounded-full border-2 border-gray-200 flex items-center justify-center text-xs font-bold text-gray-400 flex-shrink-0">2</div>
+                                    <div>
+                                        <p class="text-sm font-medium text-gray-600">Search case law</p>
+                                        <p class="text-xs text-gray-400">Slov-lex [SK] · EC Decisions [EU] · CJEU / EUR-Lex [EU]</p>
+                                    </div>
+                                </div>
+                                <div class="judge-step flex items-center gap-3" id="step3row">
+                                    <div class="step-icon w-8 h-8 rounded-full border-2 border-gray-200 flex items-center justify-center text-xs font-bold text-gray-400 flex-shrink-0">3</div>
+                                    <div>
+                                        <p class="text-sm font-medium text-gray-600">Analyse case law</p>
+                                        <p class="text-xs text-gray-400">Extract legal principles, tests, hierarchy of norms</p>
+                                    </div>
+                                </div>
+                                <div class="judge-step flex items-center gap-3" id="step4row">
+                                    <div class="step-icon w-8 h-8 rounded-full border-2 border-gray-200 flex items-center justify-center text-xs font-bold text-gray-400 flex-shrink-0">4</div>
+                                    <div>
+                                        <p class="text-sm font-medium text-gray-600">Apply to the case</p>
+                                        <p class="text-xs text-gray-400">Structured judicial opinion with [SK]/[EU] citations</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Results panel (hidden until analysis complete) -->
+                    <div id="judgeResultPanel" class="hidden px-8 pb-12 max-w-4xl mx-auto">
+
+                        <!-- Back button -->
+                        <button id="judgeNewBtn" class="mb-6 text-sm text-brand-500 hover:text-brand-700 font-medium flex items-center gap-1">
+                            <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z"/>
+                            </svg>
+                            New Analysis
+                        </button>
+
+                        <!-- Step 1: Topic -->
+                        <div class="bg-white rounded-2xl shadow-sm mb-5">
+                            <div class="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
+                                <span class="w-7 h-7 rounded-full bg-brand-500 text-white text-xs font-bold flex items-center justify-center">1</span>
+                                <h3 class="font-semibold text-gray-800">Legal Topic Definition</h3>
+                            </div>
+                            <div class="px-6 py-5" id="judgeTopicSection">
+                                <!-- Filled by JS -->
+                            </div>
+                        </div>
+
+                        <!-- Step 2: Sources -->
+                        <div class="bg-white rounded-2xl shadow-sm mb-5">
+                            <div class="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
+                                <span class="w-7 h-7 rounded-full bg-brand-500 text-white text-xs font-bold flex items-center justify-center">2</span>
+                                <h3 class="font-semibold text-gray-800">Retrieved Case Law</h3>
+                                <span id="judgeSourceCount" class="ml-auto text-xs text-gray-400"></span>
+                            </div>
+                            <div class="px-6 py-5" id="judgeSourcesSection">
+                                <!-- Filled by JS -->
+                            </div>
+                        </div>
+
+                        <!-- Step 3: Case law analysis -->
+                        <div class="bg-white rounded-2xl shadow-sm mb-5">
+                            <div class="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
+                                <span class="w-7 h-7 rounded-full bg-brand-500 text-white text-xs font-bold flex items-center justify-center">3</span>
+                                <h3 class="font-semibold text-gray-800">Case Law Analysis</h3>
+                            </div>
+                            <div class="px-6 py-5 prose prose-sm max-w-none" id="judgeCaseLawSection">
+                                <!-- Filled by JS -->
+                            </div>
+                        </div>
+
+                        <!-- Step 4: Application to case -->
+                        <div class="bg-white rounded-2xl shadow-sm">
+                            <div class="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
+                                <span class="w-7 h-7 rounded-full bg-emerald-600 text-white text-xs font-bold flex items-center justify-center">4</span>
+                                <h3 class="font-semibold text-gray-800">Application to the Case</h3>
+                                <span class="ml-auto text-xs px-2 py-1 bg-emerald-50 text-emerald-700 rounded border border-emerald-200 font-medium">Final Opinion</span>
+                            </div>
+                            <div class="px-6 py-5 prose prose-sm max-w-none" id="judgeFinalSection">
+                                <!-- Filled by JS -->
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
