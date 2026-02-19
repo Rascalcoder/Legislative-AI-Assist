@@ -2,11 +2,20 @@
 External case law search service.
 
 Searches three authoritative legal databases in parallel:
-  1. Slov-lex (SK) - Slovak judicial decisions database
-  2. European Commission - Competition decisions (competition-cases.ec.europa.eu)
-  3. CJEU - Court of Justice of the EU (via EUR-Lex / InfoCuria)
 
-Results are returned with jurisdiction labels [SK] or [EU] and source metadata.
+  1. Slov-lex [SK] – Slovak judicial decisions (HTML search, no public REST API)
+     https://www.slov-lex.sk/vyhladavanie?query=...&type=JUDIKATURY
+
+  2. European Commission [EU] – Competition decisions JSON API
+     https://competition-cases.ec.europa.eu/api/cases?query=...
+
+  3. CJEU [EU] – Court of Justice via the CELLAR SPARQL endpoint
+     https://publications.europa.eu/webapi/rdf/sparql
+     This is the official Publications Office semantic repository – the most
+     reliable and professional API for EU case law. Returns structured JSON.
+
+All three searches run concurrently via asyncio.gather().
+Each source degrades gracefully: on timeout or HTTP error it returns [].
 """
 import logging
 import re
@@ -18,106 +27,113 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# HTTP client defaults
+# ── Common HTTP config ────────────────────────────────────────────────────────
 _HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (compatible; LegalResearchBot/1.0; "
-        "Educational/Professional Legal Research)"
-    ),
-    "Accept": (
-        "text/html,application/xhtml+xml,application/xml;q=0.9,"
-        "application/json,*/*;q=0.8"
+        "+https://github.com/Rascalcoder/Legislative-AI-Assist)"
     ),
     "Accept-Language": "sk,en;q=0.9,hu;q=0.8",
 }
-_TIMEOUT = httpx.Timeout(20.0, connect=8.0)
+_TIMEOUT = httpx.Timeout(25.0, connect=8.0)
+
+# ── CELLAR / EUR-Lex SPARQL ───────────────────────────────────────────────────
+_SPARQL_ENDPOINT = "https://publications.europa.eu/webapi/rdf/sparql"
+
+# CDM namespace – EU Publications Office Common Data Model
+_CDM = "http://publications.europa.eu/ontology/cdm#"
+_LANG_EN = "http://publications.europa.eu/resource/authority/language/ENG"
+_LANG_SK = "http://publications.europa.eu/resource/authority/language/SLK"
 
 
 # ============================================================
-# 1. Slov-lex (SK Judicial Decisions)
+# 1.  Slov-lex  [SK] – Slovak Judicial Decisions
 # ============================================================
 
 async def search_slov_lex(query: str, max_results: int = 5) -> List[Dict]:
     """
     Search Slovak judicial decisions (judikatúra) on Slov-lex.
 
-    Targets the full-text search at www.slov-lex.sk.
+    Slov-lex has no public REST/JSON API for judicial decisions.
+    We use their full-text search page and parse the HTML result.
+
     Returns list of dicts: {title, case_number, url, summary, jurisdiction, source}
     """
-    results = []
+    results: List[Dict] = []
     try:
-        # Slov-lex full-text search with judicature filter
-        params = urlencode({
-            "query": query,
-            "type": "JUDIKATURY",
-        })
+        params = urlencode({"query": query, "type": "JUDIKATURY"})
         url = f"https://www.slov-lex.sk/vyhladavanie?{params}"
 
         async with httpx.AsyncClient(
-            headers=_HEADERS, timeout=_TIMEOUT, follow_redirects=True
+            headers={**_HEADERS, "Accept": "text/html"},
+            timeout=_TIMEOUT,
+            follow_redirects=True,
         ) as client:
             response = await client.get(url)
             response.raise_for_status()
-            results = _parse_slov_lex_html(response.text, max_results)
-            logger.info(
-                f"Slov-lex: {len(results)} results for '{query[:50]}'"
-            )
+
+        results = _parse_slov_lex(response.text, max_results)
+        logger.info(f"[Slov-lex] {len(results)} results for '{query[:50]}'")
 
     except httpx.TimeoutException:
-        logger.warning(f"Slov-lex: timeout for query '{query[:50]}'")
+        logger.warning(f"[Slov-lex] timeout – query: '{query[:50]}'")
     except httpx.HTTPStatusError as e:
-        logger.warning(f"Slov-lex: HTTP {e.response.status_code}")
+        logger.warning(f"[Slov-lex] HTTP {e.response.status_code}")
     except Exception as e:
-        logger.warning(f"Slov-lex: search error - {e}")
+        logger.warning(f"[Slov-lex] error: {e}")
 
     return results
 
 
-def _parse_slov_lex_html(html: str, max_results: int) -> List[Dict]:
-    """Parse Slov-lex HTML search results to extract case references."""
-    results = []
+def _parse_slov_lex(html: str, max_results: int) -> List[Dict]:
+    """
+    Parse Slov-lex search results HTML.
 
-    # Primary pattern: links to judicature/legislation entries
-    link_pattern = re.compile(
-        r'href="(/(?:judikatury|pravne-predpisy)[^"]*)"[^>]*>\s*([^<]{8,300})\s*</a>',
+    Targets:
+    - Result item headings (h3 / h4 with links)
+    - Judicature-specific paths (/judikatury/)
+    - Case number patterns (e.g. 3Cdo/12/2020, 4Ob/15/2019)
+    """
+    results: List[Dict] = []
+
+    # Primary: links inside result-item / search-result divs
+    # Slov-lex wraps each result in <li class="list-group-item"> or similar
+    item_pattern = re.compile(
+        r'href="(/(?:judikatury|vyhladavanie)[^"]+)"[^>]*>\s*<[^>]+>\s*([^<]{5,250})',
         re.IGNORECASE | re.DOTALL,
     )
-
-    # Secondary: generic slov-lex document links
-    fallback_pattern = re.compile(
-        r'href="(/[^"]{5,})"[^>]*class="[^"]*(?:result|title|link)[^"]*"[^>]*>\s*([^<]{8,300})</a>',
+    # Fallback: any slov-lex internal link with readable title
+    generic_pattern = re.compile(
+        r'href="(/(?:judikatury|pravne-predpisy)[^"]*)"[^>]*>\s*([A-Z\u00C0-\u017E][^<]{8,250})</a>',
         re.IGNORECASE,
     )
+    # Court decision case number: 1Cdo/23/2019, 3Ob/45/2021, etc.
+    case_num_re = re.compile(r'\b(\d+\s*[A-Za-z]{1,5}/\d+/\d{4})\b')
 
-    # Pattern to detect court decision case numbers (e.g. "1Cdo/12/2019")
-    case_num_pattern = re.compile(
-        r'\b(\d+[A-Za-z]+/\d+/\d{4}|\d{4}/\d+)\b'
-    )
-
-    seen = set()
-    for pattern in (link_pattern, fallback_pattern):
-        for match in pattern.finditer(html):
+    seen: set = set()
+    for pattern in (item_pattern, generic_pattern):
+        for m in pattern.finditer(html):
             if len(results) >= max_results:
                 break
-            path = match.group(1).strip()
-            title = re.sub(r'\s+', ' ', match.group(2)).strip()
+            path = m.group(1).strip()
+            raw_title = re.sub(r'\s+', ' ', m.group(2)).strip()
+            # Remove HTML tags that crept in
+            title = re.sub(r'<[^>]+>', '', raw_title).strip()
 
-            if not title or path in seen or len(title) < 8:
+            if not title or path in seen or len(title) < 5:
                 continue
-
             seen.add(path)
-            case_num_match = case_num_pattern.search(title)
 
+            cn = case_num_re.search(title)
             results.append({
                 "title": title,
-                "case_number": case_num_match.group(0) if case_num_match else "",
+                "case_number": cn.group(0) if cn else "",
                 "date": "",
                 "summary": "",
                 "url": f"https://www.slov-lex.sk{path}",
                 "jurisdiction": "SK",
                 "source": "Slov-lex",
             })
-
         if len(results) >= max_results:
             break
 
@@ -125,19 +141,22 @@ def _parse_slov_lex_html(html: str, max_results: int) -> List[Dict]:
 
 
 # ============================================================
-# 2. European Commission Competition Decisions
+# 2.  EC Competition Decisions  [EU]
 # ============================================================
 
 async def search_ec_decisions(query: str, max_results: int = 5) -> List[Dict]:
     """
     Search European Commission competition case law.
 
-    Uses the public competition-cases.ec.europa.eu API.
+    Primary:  JSON REST API at competition-cases.ec.europa.eu/api/cases
+    Fallback: HTML search page scraping
+
     Returns list of dicts: {title, case_number, date, summary, url, jurisdiction, source}
     """
-    results = []
+    results: List[Dict] = []
+
+    # ── Primary: JSON API ─────────────────────────────────────────────────────
     try:
-        # Try the EC competition cases API (JSON)
         params = urlencode({
             "query": query,
             "size": max_results,
@@ -151,50 +170,55 @@ async def search_ec_decisions(query: str, max_results: int = 5) -> List[Dict]:
             timeout=_TIMEOUT,
             follow_redirects=True,
         ) as client:
-            response = await client.get(api_url)
-            response.raise_for_status()
-            data = response.json()
-            results = _parse_ec_json(data, max_results)
+            r = await client.get(api_url)
+            r.raise_for_status()
+            data = r.json()
 
-        if not results:
-            # Fallback: scrape the search page
-            results = await _scrape_ec_search(query, max_results)
-
-        logger.info(f"EC Decisions: {len(results)} results for '{query[:50]}'")
+        results = _parse_ec_json(data, max_results)
+        if results:
+            logger.info(f"[EC API] {len(results)} results for '{query[:50]}'")
+            return results
 
     except httpx.TimeoutException:
-        logger.warning(f"EC Decisions: timeout for query '{query[:50]}'")
+        logger.warning(f"[EC API] timeout – query: '{query[:50]}'")
     except httpx.HTTPStatusError as e:
-        logger.warning(f"EC Decisions: HTTP {e.response.status_code}")
-        # Fallback to HTML scraping
-        try:
-            results = await _scrape_ec_search(query, max_results)
-        except Exception:
-            pass
+        logger.warning(f"[EC API] HTTP {e.response.status_code}")
     except Exception as e:
-        logger.warning(f"EC Decisions: error - {e}")
+        logger.warning(f"[EC API] error: {e}")
+
+    # ── Fallback: HTML search ─────────────────────────────────────────────────
+    try:
+        results = await _scrape_ec_html(query, max_results)
+        if results:
+            logger.info(f"[EC HTML] {len(results)} results (fallback) for '{query[:50]}'")
+    except Exception as e:
+        logger.warning(f"[EC HTML] fallback error: {e}")
 
     return results
 
 
 def _parse_ec_json(data: dict, max_results: int) -> List[Dict]:
-    """Parse EC competition cases JSON API response."""
-    results = []
+    """Parse EC competition cases JSON API response (handles various response shapes)."""
+    results: List[Dict] = []
 
-    # Handle various possible response shapes
     items = (
         data.get("items")
         or data.get("cases")
         or data.get("results")
         or data.get("data")
+        or (data.get("hits", {}) or {}).get("hits", [])  # Elasticsearch format
         or []
     )
 
-    for item in items[:max_results]:
+    # Elasticsearch _source unwrap
+    unwrapped = [i.get("_source", i) for i in items]
+
+    for item in unwrapped[:max_results]:
         case_num = (
             item.get("caseNumber")
             or item.get("case_number")
-            or item.get("reference", "")
+            or item.get("reference")
+            or ""
         )
         title = (
             item.get("caseName")
@@ -205,18 +229,21 @@ def _parse_ec_json(data: dict, max_results: int) -> List[Dict]:
         )
         date = str(
             item.get("closingDate")
+            or item.get("decisionDate")
             or item.get("date")
-            or item.get("decisionDate", "")
+            or ""
+        ).split("T")[0]  # keep YYYY-MM-DD only
+
+        url = item.get("url") or (
+            f"https://competition-cases.ec.europa.eu/cases/{case_num}"
+            if case_num else ""
         )
-        url = item.get("url", "")
-        if not url and case_num:
-            url = f"https://competition-cases.ec.europa.eu/cases/{case_num}"
 
         results.append({
             "title": title,
             "case_number": case_num,
             "date": date,
-            "summary": item.get("description") or item.get("summary", ""),
+            "summary": item.get("description") or item.get("summary") or "",
             "url": url,
             "jurisdiction": "EU",
             "source": "EC Competition Decisions",
@@ -225,43 +252,38 @@ def _parse_ec_json(data: dict, max_results: int) -> List[Dict]:
     return results
 
 
-async def _scrape_ec_search(query: str, max_results: int) -> List[Dict]:
-    """Fallback: scrape EC competition decisions search page."""
-    results = []
+async def _scrape_ec_html(query: str, max_results: int) -> List[Dict]:
+    """Fallback: parse EC competition search HTML."""
     params = urlencode({"query": query})
     url = f"https://competition-cases.ec.europa.eu/search?{params}"
 
     async with httpx.AsyncClient(
-        headers=_HEADERS, timeout=_TIMEOUT, follow_redirects=True
+        headers={**_HEADERS, "Accept": "text/html"},
+        timeout=_TIMEOUT,
+        follow_redirects=True,
     ) as client:
-        response = await client.get(url)
-        response.raise_for_status()
+        r = await client.get(url)
+        r.raise_for_status()
 
-    # Extract case references from HTML
-    # Pattern: AT.XXXXX or M.XXXX or SA.XXXX (EC case number formats)
-    case_ref_pattern = re.compile(
-        r'(AT\.\d+|M\.\d+|SA\.\d+|COMP/[A-Z\d./]+)',
-        re.IGNORECASE,
-    )
-    link_pattern = re.compile(
-        r'href="(/cases/[^"]+)"[^>]*>\s*([^<]{5,200})</a>',
-        re.IGNORECASE,
+    # EC case number formats: AT.40099, M.9000, SA.12345, COMP/M.1234
+    cn_re = re.compile(r'\b(AT\.\d+|M\.\d+|SA\.\d+|COMP/[A-Z\d./]+)\b', re.I)
+    link_re = re.compile(
+        r'href="(/cases/[^"]+)"[^>]*>\s*([^<]{5,200})</a>', re.I
     )
 
-    seen = set()
-    for match in link_pattern.finditer(response.text):
+    seen: set = set()
+    results: List[Dict] = []
+    for m in link_re.finditer(r.text):
         if len(results) >= max_results:
             break
-        path = match.group(1)
-        title = match.group(2).strip()
+        path, title = m.group(1), m.group(2).strip()
         if path in seen or not title:
             continue
         seen.add(path)
-
-        case_match = case_ref_pattern.search(title + path)
+        cn = cn_re.search(title + path)
         results.append({
             "title": title,
-            "case_number": case_match.group(0) if case_match else "",
+            "case_number": cn.group(0) if cn else "",
             "date": "",
             "summary": "",
             "url": f"https://competition-cases.ec.europa.eu{path}",
@@ -273,102 +295,216 @@ async def _scrape_ec_search(query: str, max_results: int) -> List[Dict]:
 
 
 # ============================================================
-# 3. CJEU - Court of Justice of the EU (via EUR-Lex)
+# 3.  CJEU – Court of Justice of the EU  [EU]
+#     Via the CELLAR SPARQL endpoint (official Publications Office API)
 # ============================================================
+
+def _build_cjeu_sparql(keyword: str, max_results: int) -> str:
+    """
+    Build a SPARQL query against the CELLAR semantic repository.
+
+    CDM ontology:  http://publications.europa.eu/ontology/cdm#
+    Class used:    cdm:judgment   (CJEU / General Court judgments)
+    Language:      English expressions (most CJEU judgments have EN titles)
+
+    The query does a case-insensitive CONTAINS filter on the expression title.
+    We also try to retrieve the CELEX identifier for constructing the EUR-Lex URL.
+    """
+    # Escape any quotes in the keyword
+    safe_kw = keyword.replace('"', ' ').replace("'", ' ').strip()[:80]
+
+    return f"""
+PREFIX cdm:     <{_CDM}>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+PREFIX lang:    <http://publications.europa.eu/resource/authority/language/>
+
+SELECT DISTINCT ?work ?celex ?date ?title
+WHERE {{
+  ?work a cdm:judgment ;
+        cdm:resource_legal_id_celex ?celex ;
+        cdm:work_date_document      ?date ;
+        cdm:work_has_expression     ?expr .
+
+  ?expr cdm:expression_uses_language lang:ENG ;
+        cdm:expression_title         ?title .
+
+  FILTER ( CONTAINS( LCASE(STR(?title)), LCASE("{safe_kw}") ) )
+}}
+ORDER BY DESC(?date)
+LIMIT {max_results}
+"""
+
 
 async def search_cjeu(query: str, max_results: int = 5) -> List[Dict]:
     """
-    Search CJEU case law via EUR-Lex full-text search.
+    Search CJEU case law via the CELLAR SPARQL endpoint.
 
-    Targets CJEU judgments and opinions (CELEX domain 6).
-    Returns list of dicts: {title, case_number, date, url, jurisdiction, source}
+    This is the official Publications Office machine-readable API.
+    Returns application/sparql-results+json – fully structured, no scraping.
+
+    On failure falls back to EUR-Lex full-text search HTML parse.
     """
-    results = []
+    results: List[Dict] = []
+
+    # ── Primary: SPARQL ───────────────────────────────────────────────────────
+    # Use the first ~3 meaningful words as the keyword to avoid SPARQL injection
+    keyword = " ".join(query.split()[:4])
+
     try:
-        # EUR-Lex case law search - filter to CJEU domain
-        params = urlencode({
-            "type": "quick",
-            "lang": "en",
-            "query": query,
-            "SUBDOM_INIT": "ALL_ALL",
-            "DTS_DOM": "EU",
-            "DTA_TYPE": "ALL",
-            "locale": "en",
-        })
-        url = f"https://eur-lex.europa.eu/search-results.html?{params}"
+        sparql_body = _build_cjeu_sparql(keyword, max_results)
 
-        async with httpx.AsyncClient(
-            headers=_HEADERS, timeout=_TIMEOUT, follow_redirects=True
-        ) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            results = _parse_eurlex_html(response.text, max_results)
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            r = await client.post(
+                _SPARQL_ENDPOINT,
+                content=sparql_body.encode(),
+                headers={
+                    "Content-Type": "application/sparql-query",
+                    "Accept": "application/sparql-results+json",
+                },
+            )
+            r.raise_for_status()
+            data = r.json()
 
-        logger.info(f"CJEU/EUR-Lex: {len(results)} results for '{query[:50]}'")
+        results = _parse_sparql_json(data, max_results)
+        if results:
+            logger.info(
+                f"[CJEU SPARQL] {len(results)} results for '{keyword}'"
+            )
+            return results
+
+        logger.info(f"[CJEU SPARQL] 0 results – trying fallback")
 
     except httpx.TimeoutException:
-        logger.warning(f"CJEU: timeout for query '{query[:50]}'")
+        logger.warning(f"[CJEU SPARQL] timeout – keyword: '{keyword}'")
     except httpx.HTTPStatusError as e:
-        logger.warning(f"CJEU: HTTP {e.response.status_code}")
+        logger.warning(f"[CJEU SPARQL] HTTP {e.response.status_code}")
     except Exception as e:
-        logger.warning(f"CJEU: search error - {e}")
+        logger.warning(f"[CJEU SPARQL] error: {e}")
+
+    # ── Fallback: EUR-Lex full-text search HTML ───────────────────────────────
+    try:
+        results = await _scrape_eurlex_html(query, max_results)
+        if results:
+            logger.info(
+                f"[CJEU EUR-Lex HTML] {len(results)} results (fallback)"
+            )
+    except Exception as e:
+        logger.warning(f"[CJEU EUR-Lex HTML] fallback error: {e}")
 
     return results
 
 
-def _parse_eurlex_html(html: str, max_results: int) -> List[Dict]:
+def _parse_sparql_json(data: dict, max_results: int) -> List[Dict]:
     """
-    Parse EUR-Lex search results HTML.
+    Parse application/sparql-results+json response from CELLAR.
 
-    Extracts document links - prioritises CJEU case law (CELEX 6xxxxxx).
+    Binding variables: ?work, ?celex, ?date, ?title
     """
-    results = []
+    results: List[Dict] = []
+    bindings = data.get("results", {}).get("bindings", [])
 
-    # Pattern: EUR-Lex legal-content document links
-    link_pattern = re.compile(
-        r'href="(https://eur-lex\.europa\.eu/legal-content/[^"]+)"[^>]*>'
-        r'\s*([^<]{10,400})\s*</a>',
-        re.IGNORECASE | re.DOTALL,
-    )
+    for b in bindings[:max_results]:
+        celex = b.get("celex", {}).get("value", "")
+        title = b.get("title", {}).get("value", "")
+        date  = b.get("date",  {}).get("value", "")[:10]   # YYYY-MM-DD
 
-    # CELEX pattern: case law starts with 6
-    celex_pattern = re.compile(r'CELEX%3A(6[A-Z0-9]+)|CELEX:(6[A-Z0-9]+)', re.IGNORECASE)
+        # Convert CELEX to friendly case number: 62019CJ0001 → C-1/19
+        case_num = _celex_to_friendly(celex)
 
-    # Case number pattern: C-123/45 or T-456/78
-    cjeu_case_pattern = re.compile(r'\b([CT]-\d+/\d{2,4}(?:P?(?:\s+\w+)?))\b')
+        eur_lex_url = (
+            f"https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:{celex}"
+            if celex else ""
+        )
 
-    # Date pattern: YYYY-MM-DD or DD/MM/YYYY
-    date_pattern = re.compile(r'\b(\d{4}-\d{2}-\d{2}|\d{2}/\d{2}/\d{4})\b')
-
-    seen_urls = set()
-    for match in link_pattern.finditer(html):
-        if len(results) >= max_results:
-            break
-
-        url = match.group(1).strip()
-        title = re.sub(r'\s+', ' ', match.group(2)).strip()
-
-        if url in seen_urls or not title or len(title) < 10:
-            continue
-
-        # Skip non-case-law links (legislation, summaries, etc.) if possible
-        # by preferring CELEX numbers that start with 6
-        celex_match = celex_pattern.search(url)
-        celex = (celex_match.group(1) or celex_match.group(2)) if celex_match else ""
-
-        cjeu_match = cjeu_case_pattern.search(title)
-        case_num = cjeu_match.group(0) if cjeu_match else celex
-
-        date_match = date_pattern.search(title + url)
-        date = date_match.group(0) if date_match else ""
-
-        seen_urls.add(url)
         results.append({
             "title": title,
-            "case_number": case_num,
+            "case_number": case_num or celex,
             "date": date,
             "summary": "",
-            "url": url,
+            "url": eur_lex_url,
+            "jurisdiction": "EU",
+            "source": "CJEU / EUR-Lex (CELLAR)",
+        })
+
+    return results
+
+
+def _celex_to_friendly(celex: str) -> str:
+    """
+    Convert a CELEX number to a readable CJEU case number.
+
+    Examples:
+        62019CJ0001  → C-1/19   (Court of Justice)
+        62020TJ0050  → T-50/20  (General Court / Tribunal)
+        62018CO0123  → C-123/18 (Order)
+    """
+    # CELEX pattern for case law: 6 + YYYY + TT + NNNN
+    m = re.match(r'^6(\d{4})(CJ|TJ|CO|TA)0*(\d+)$', celex, re.I)
+    if not m:
+        return ""
+    year, court_code, num = m.group(1), m.group(2).upper(), m.group(3)
+    prefix = "T" if court_code == "TJ" else "C"
+    return f"{prefix}-{num}/{year[2:]}"   # e.g. C-1/19
+
+
+async def _scrape_eurlex_html(query: str, max_results: int) -> List[Dict]:
+    """Fallback: parse EUR-Lex full-text search HTML for CJEU judgments."""
+    params = urlencode({
+        "type": "quick",
+        "lang": "en",
+        "query": query,
+        "DB_TYPE_OF_ACT": "judgment",   # limit to judgments
+        "SUBDOM_INIT": "ALL_ALL",
+        "DTS_DOM": "EU",
+        "locale": "en",
+    })
+    url = f"https://eur-lex.europa.eu/search-results.html?{params}"
+
+    async with httpx.AsyncClient(
+        headers={**_HEADERS, "Accept": "text/html"},
+        timeout=_TIMEOUT,
+        follow_redirects=True,
+    ) as client:
+        r = await client.get(url)
+        r.raise_for_status()
+
+    link_re = re.compile(
+        r'href="(https://eur-lex\.europa\.eu/legal-content/[^"]+)"[^>]*>'
+        r'\s*([^<]{10,400})\s*</a>',
+        re.I | re.DOTALL,
+    )
+    celex_re = re.compile(r'CELEX[:%3A]+(6[A-Z0-9]+)', re.I)
+    case_re  = re.compile(r'\b([CT]-\d+/\d{2,4})\b')
+    date_re  = re.compile(r'\b(\d{4}-\d{2}-\d{2})\b')
+
+    seen: set = set()
+    results: List[Dict] = []
+
+    for m in link_re.finditer(r.text):
+        if len(results) >= max_results:
+            break
+        url_val = m.group(1).strip()
+        title   = re.sub(r'\s+', ' ', m.group(2)).strip()
+        title   = re.sub(r'<[^>]+>', '', title)
+
+        if url_val in seen or not title or len(title) < 10:
+            continue
+        seen.add(url_val)
+
+        celex_m = celex_re.search(url_val)
+        case_m  = case_re.search(title)
+        date_m  = date_re.search(title + url_val)
+
+        results.append({
+            "title": title,
+            "case_number": (
+                case_m.group(0) if case_m
+                else _celex_to_friendly(celex_m.group(1)) if celex_m
+                else ""
+            ),
+            "date": date_m.group(0) if date_m else "",
+            "summary": "",
+            "url": url_val,
             "jurisdiction": "EU",
             "source": "CJEU / EUR-Lex",
         })
@@ -390,22 +526,26 @@ async def search_all_sources(
     """
     Search all external case law sources in parallel.
 
+    Method per source:
+      slov_lex     → HTML search (Slov-lex has no public judikatúra REST API)
+      ec_decisions → JSON REST API  →  HTML fallback
+      cjeu         → SPARQL/CELLAR  →  EUR-Lex HTML fallback
+
     Args:
-        query:           Search string (optimised for legal databases)
-        max_per_source:  Maximum results per source database
-        include_sk:      Include Slov-lex (Slovak decisions)
-        include_ec:      Include EC competition decisions
-        include_cjeu:    Include CJEU case law via EUR-Lex
+        query:           Search string optimised for legal databases
+        max_per_source:  Maximum results per source (default 5)
+        include_sk:      Include Slov-lex [SK]
+        include_ec:      Include EC Competition Decisions [EU]
+        include_cjeu:    Include CJEU via SPARQL [EU]
 
     Returns:
         {
-            "slov_lex":     [...],   # [SK] results
-            "ec_decisions": [...],   # [EU] results
-            "cjeu":         [...],   # [EU] results
+            "slov_lex":     [...],   # [SK]
+            "ec_decisions": [...],   # [EU]
+            "cjeu":         [...],   # [EU]
         }
     """
-    task_map = {}
-
+    task_map: Dict[str, object] = {}
     if include_sk:
         task_map["slov_lex"] = search_slov_lex(query, max_per_source)
     if include_ec:
@@ -417,21 +557,21 @@ async def search_all_sources(
         return {}
 
     keys = list(task_map.keys())
-    coros = [task_map[k] for k in keys]
-
-    task_results = await asyncio.gather(*coros, return_exceptions=True)
-
-    results: Dict[str, List[Dict]] = {}
-    for key, outcome in zip(keys, task_results):
-        if isinstance(outcome, Exception):
-            logger.error(f"External search '{key}' raised: {outcome}")
-            results[key] = []
-        else:
-            results[key] = outcome
-
-    total = sum(len(v) for v in results.values())
-    logger.info(
-        f"External search complete: {total} results "
-        f"across {len(results)} sources for '{query[:50]}'"
+    outcomes = await asyncio.gather(
+        *[task_map[k] for k in keys], return_exceptions=True
     )
-    return results
+
+    result: Dict[str, List[Dict]] = {}
+    for key, outcome in zip(keys, outcomes):
+        if isinstance(outcome, Exception):
+            logger.error(f"[search_all_sources] '{key}' raised: {outcome}")
+            result[key] = []
+        else:
+            result[key] = outcome   # type: ignore[assignment]
+
+    total = sum(len(v) for v in result.values())
+    logger.info(
+        f"[search_all_sources] Done: {total} total results "
+        f"across {len(result)} sources | query='{query[:50]}'"
+    )
+    return result
