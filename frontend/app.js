@@ -403,3 +403,6 @@ function escapeHtml(text) {
 
 // Expose to global scope (needed for inline onclick handlers in dynamic HTML)
 window.deleteDocument = deleteDocument;
+
+
+

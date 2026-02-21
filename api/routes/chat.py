@@ -50,3 +50,6 @@ async def delete_chat_history(conversation_id: str):
     db.delete_conversation(conversation_id)
     return {"message": "Conversation deleted"}
 
+
+
+

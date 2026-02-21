@@ -75,3 +75,6 @@ async def delete_document(document_id: str):
     db.delete_document(document_id)
     return {"message": "Document deleted"}
 
+
+
+

@@ -23,3 +23,6 @@ EXPOSE $PORT
 # Run application (single worker, Cloud Run handles scaling)
 CMD exec uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1
 
+
+
+

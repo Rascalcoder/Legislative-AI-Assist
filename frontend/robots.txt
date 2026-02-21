@@ -24,3 +24,6 @@ Allow: /
 # (Uncomment if API is on same domain and you don't want it indexed)
 # Disallow: /api/
 
+
+
+

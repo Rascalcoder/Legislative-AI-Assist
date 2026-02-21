@@ -16,3 +16,6 @@ async def health_check():
         supported_languages=["sk", "hu", "en"],
     )
 
+
+
+
