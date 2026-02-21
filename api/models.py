@@ -17,12 +17,24 @@ class ChatRequest(BaseModel):
 
 
 class SourceInfo(BaseModel):
-    chunk_id: str
-    document_id: str
+    # Common fields
     jurisdiction: Optional[str] = None
     jurisdiction_label: str = ""
-    rrf_score: float = 0
-    content_preview: str = ""
+    type: str = "document"  # 'document' or 'court_case'
+    
+    # Document chunk fields (when type='document')
+    chunk_id: Optional[str] = None
+    document_id: Optional[str] = None
+    rrf_score: Optional[float] = 0
+    content_preview: Optional[str] = ""
+    
+    # Court case fields (when type='court_case')
+    case_number: Optional[str] = None
+    url: Optional[str] = None
+    court: Optional[str] = None
+    date: Optional[str] = None
+    title: Optional[str] = None
+    relevance_score: Optional[float] = 0
 
 
 class ChatResponse(BaseModel):

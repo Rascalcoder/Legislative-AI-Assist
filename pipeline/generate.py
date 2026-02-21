@@ -13,20 +13,49 @@ import logging
 from typing import Dict, List, Optional
 
 from services.llm_client import llm_call
+from services.supabase_service import log_audit
 from config import cfg
 
 logger = logging.getLogger(__name__)
 
 
-def _build_context(chunks: List[Dict]) -> str:
-    """Build context string from retrieved chunks with [SK]/[EU] labels."""
-    if not chunks:
+def _build_context(chunks: List[Dict], court_cases: List[Dict] = None) -> str:
+    """
+    Build context string from retrieved chunks and court cases with [SK]/[EU] labels.
+    
+    Args:
+        chunks: Pre-indexed document chunks
+        court_cases: Live court cases with URLs
+    """
+    court_cases = court_cases or []
+    
+    if not chunks and not court_cases:
         return "No relevant documents found in the database."
 
     parts = []
+    
+    # Add document chunks
     for i, chunk in enumerate(chunks, 1):
         label = chunk.get("jurisdiction_label", "")
         parts.append(f"Source {i} {label}:\n{chunk['content']}")
+    
+    # Add court cases with URLs
+    for i, case in enumerate(court_cases, len(chunks) + 1):
+        label = f"[{case.get('jurisdiction', '')}]" if case.get('jurisdiction') else ""
+        case_info = (
+            f"Source {i} {label} - COURT CASE:\n"
+            f"Case: {case.get('case_number', 'Unknown')}\n"
+            f"Court: {case.get('court', 'Unknown')}\n"
+            f"Date: {case.get('date', 'Unknown')}\n"
+            f"URL: {case.get('url', 'No URL')}\n"
+            f"Topic: {case.get('topic', 'Competition Law')}\n"
+        )
+        if case.get('title'):
+            case_info += f"Title: {case['title']}\n"
+        if case.get('summary'):
+            case_info += f"Summary: {case['summary']}\n"
+        
+        parts.append(case_info)
 
     return "\n\n---\n\n".join(parts)
 
@@ -44,13 +73,27 @@ def _build_messages(
 
     messages = [{"role": "system", "content": system_prompt}]
 
-    # Add conversation history
+    # Add conversation history for follow-up context
     max_history = cfg.prompts["conversation"]["max_history"]
     if conversation_history:
+        # Include previous exchanges for context continuity
         for msg in conversation_history[-max_history:]:
+            # Include full message for context
+            msg_content = msg["content"]
+            
+            # If assistant message had sources, add them as footnotes
+            if msg["role"] == "assistant" and msg.get("sources"):
+                source_summary = "\n[Previous sources: "
+                source_summary += ", ".join([
+                    f"{s.get('case_number') or s.get('chunk_id', 'doc')}"
+                    for s in msg.get("sources", [])[:3]  # Max 3 for brevity
+                ])
+                source_summary += "]"
+                msg_content += source_summary
+            
             messages.append({
                 "role": msg["role"],
-                "content": msg["content"],
+                "content": msg_content,
             })
 
     # Current query with legal/educational context wrapper
@@ -74,14 +117,25 @@ async def generate_and_verify(
     language: str,
     conversation_history: Optional[List[Dict]] = None,
     complexity: str = "simple",
+    court_cases: Optional[List[Dict]] = None,
 ) -> Dict:
     """
     Generate response and run verification.
 
     Uses 'light' model for simple queries, 'deep' for complex.
     Always runs L5 verification with 'light' model.
+    
+    Args:
+        query: User query
+        chunks: Pre-indexed document chunks from Supabase
+        language: Query language
+        conversation_history: Previous messages
+        complexity: 'simple' or 'complex'
+        court_cases: Live court cases from external sources (NSSUD, etc.)
     """
-    context = _build_context(chunks)
+    court_cases = court_cases or []
+    
+    context = _build_context(chunks, court_cases)
     messages = _build_messages(query, context, language, conversation_history)
 
     # L3/L4: Generate response
@@ -89,8 +143,20 @@ async def generate_and_verify(
     gen_result = await llm_call(role=role, messages=messages)
     response_text = gen_result["content"]
 
-    # Build source list
+    log_audit(
+        action="generate",
+        model=gen_result.get("model"),
+        provider=gen_result.get("provider"),
+        input_tokens=gen_result.get("input_tokens"),
+        output_tokens=gen_result.get("output_tokens"),
+        latency_ms=gen_result.get("latency_ms"),
+        metadata={"role": role, "complexity": complexity, "chunks": len(chunks), "cases": len(court_cases)},
+    )
+
+    # Build source list (chunks + court cases)
     sources = []
+    
+    # Add document chunks
     for chunk in chunks:
         sources.append({
             "chunk_id": str(chunk["chunk_id"]),
@@ -99,6 +165,21 @@ async def generate_and_verify(
             "jurisdiction_label": chunk.get("jurisdiction_label", ""),
             "rrf_score": chunk.get("rrf_score", 0),
             "content_preview": chunk["content"][:200],
+            "type": "document",
+        })
+    
+    # Add court cases
+    for case in court_cases:
+        sources.append({
+            "case_number": case.get("case_number", "Unknown"),
+            "url": case.get("url", ""),
+            "jurisdiction": case.get("jurisdiction"),
+            "jurisdiction_label": f"[{case.get('jurisdiction', '')}]",
+            "court": case.get("court", "Unknown"),
+            "date": case.get("date", "Unknown"),
+            "title": case.get("title", ""),
+            "relevance_score": case.get("relevance_score", 0),
+            "type": "court_case",
         })
 
     # L5: Verify (citation check + hallucination guard)
@@ -113,10 +194,15 @@ async def generate_and_verify(
             response_text = corrected
             logger.info("Response corrected by verification step")
 
-    # Confidence calculation
-    if chunks:
-        avg_rrf = sum(c.get("rrf_score", 0) for c in chunks) / len(chunks)
-        confidence = min(avg_rrf * 100, 1.0)
+    # Confidence calculation (from both chunks and cases)
+    total_sources = len(chunks) + len(court_cases)
+    if total_sources > 0:
+        # Calculate average score from both types
+        chunk_scores = [c.get("rrf_score", 0) for c in chunks]
+        case_scores = [c.get("relevance_score", 0) / 10 for c in court_cases]  # Normalize case scores
+        all_scores = chunk_scores + case_scores
+        avg_score = sum(all_scores) / len(all_scores) if all_scores else 0
+        confidence = min(avg_score * 100, 1.0)
     else:
         confidence = 0.0
 
@@ -159,6 +245,15 @@ async def _verify_response(
         ],
         response_format="json",
         max_tokens=500,
+    )
+
+    log_audit(
+        action="verify",
+        model=verify_result.get("model"),
+        provider=verify_result.get("provider"),
+        input_tokens=verify_result.get("input_tokens"),
+        output_tokens=verify_result.get("output_tokens"),
+        latency_ms=verify_result.get("latency_ms"),
     )
 
     try:

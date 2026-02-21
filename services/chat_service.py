@@ -11,7 +11,7 @@ from services import supabase_service as db
 from services.language_service import LanguageService
 from services.llm_client import llm_call
 from pipeline.router import route
-from pipeline.retrieval import retrieve
+from pipeline.retrieval import retrieve, retrieve_with_cases
 from pipeline.generate import generate_and_verify
 from config import cfg
 
@@ -36,8 +36,9 @@ async def process_chat(
     if not conversation_id:
         conversation_id = db.create_conversation(language)
 
-    # Load conversation history from Supabase
-    history = db.get_conversation_messages(conversation_id)
+    # Load conversation history from Supabase (last 20 messages = 10 exchanges)
+    max_messages = cfg.prompts["conversation"].get("max_history", 10) * 2
+    history = db.get_conversation_messages(conversation_id, limit=max_messages)
 
     # F1: Route
     routing = await route(message, history)
@@ -52,21 +53,30 @@ async def process_chat(
             message, conversation_id, language, routing["intent"]
         )
 
-    # F2: Retrieve
-    chunks = await retrieve(
+    # F2: Retrieve (hybrid search + live court cases)
+    retrieval_result = await retrieve_with_cases(
         query=routing.get("rewritten_query", message),
         needs_eu=routing.get("needs_eu", True),
         needs_sk=routing.get("needs_sk", True),
         language=language,
+        include_live_cases=True,  # Enable court case scraping
+    )
+    
+    chunks = retrieval_result["chunks"]
+    court_cases = retrieval_result["cases"]
+    
+    logger.info(
+        f"Retrieved {len(chunks)} chunks + {len(court_cases)} court cases"
     )
 
-    # F3: Generate + Verify
+    # F3: Generate + Verify (with both chunks and cases)
     result = await generate_and_verify(
         query=message,
         chunks=chunks,
         language=language,
         conversation_history=history,
         complexity=routing.get("complexity", "simple"),
+        court_cases=court_cases,  # Pass court cases to generator
     )
 
     # Save messages to Supabase

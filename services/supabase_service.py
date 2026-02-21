@@ -143,8 +143,17 @@ def create_conversation(language: str = "en") -> str:
     return conv_id
 
 
-def get_conversation_messages(conv_id: str, limit: int = 10) -> List[Dict]:
-    """Get recent messages for a conversation (chronological order)."""
+def get_conversation_messages(conv_id: str, limit: int = 20) -> List[Dict]:
+    """
+    Get recent messages for a conversation (chronological order).
+    
+    Args:
+        conv_id: Conversation UUID
+        limit: Max messages to retrieve (default: 20 = 10 exchanges)
+        
+    Returns:
+        List of messages in chronological order (oldest first)
+    """
     result = (
         _get_client()
         .table("messages")
@@ -154,7 +163,9 @@ def get_conversation_messages(conv_id: str, limit: int = 10) -> List[Dict]:
         .limit(limit)
         .execute()
     )
-    return list(reversed(result.data))
+    # Reverse to get chronological order (oldest to newest)
+    messages = list(reversed(result.data))
+    return messages
 
 
 def add_message(
@@ -195,6 +206,19 @@ def delete_conversation(conv_id: str):
 # Audit Log
 # ============================================================
 
+_COST_PER_1K = {
+    "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
+    "claude-sonnet-4-5-20250929": {"input": 0.003, "output": 0.015},
+    "gemini-2.0-flash-lite": {"input": 0.0000375, "output": 0.00015},
+    "text-embedding-3-large": {"input": 0.00013, "output": 0},
+}
+
+
+def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
+    rates = _COST_PER_1K.get(model, {"input": 0.001, "output": 0.002})
+    return (input_tokens / 1000 * rates["input"]) + (output_tokens / 1000 * rates["output"])
+
+
 def log_audit(
     action: str,
     model: Optional[str] = None,
@@ -205,14 +229,20 @@ def log_audit(
     latency_ms: Optional[int] = None,
     metadata: Optional[dict] = None,
 ):
-    """Log an action to the audit trail."""
-    _get_client().table("audit_log").insert({
-        "action": action,
-        "model": model,
-        "provider": provider,
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "cost_usd": cost_usd,
-        "latency_ms": latency_ms,
-        "metadata": metadata or {},
-    }).execute()
+    """Log an action to the audit trail with auto cost calculation."""
+    if cost_usd is None and model and input_tokens is not None and output_tokens is not None:
+        cost_usd = _estimate_cost(model, input_tokens, output_tokens)
+
+    try:
+        _get_client().table("audit_log").insert({
+            "action": action,
+            "model": model,
+            "provider": provider,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "cost_usd": round(cost_usd, 6) if cost_usd else None,
+            "latency_ms": latency_ms,
+            "metadata": metadata or {},
+        }).execute()
+    except Exception as e:
+        logger.error(f"Failed to write audit log: {e}")

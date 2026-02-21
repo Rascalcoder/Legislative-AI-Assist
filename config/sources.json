@@ -41,6 +41,18 @@
           "url": "https://www.antimon.gov.sk",
           "type": "authority",
           "enabled": true
+        },
+        {
+          "id": "nssud_cases",
+          "name": "Najvyssi spravny sud SR - rozhodnutia",
+          "url": "https://www.nssud.sk/",
+          "type": "court_decisions",
+          "enabled": true,
+          "scraping": {
+            "method": "live",
+            "cache_ttl": 3600,
+            "search_topic": "hospodárska súťaž"
+          }
         }
       ]
     },

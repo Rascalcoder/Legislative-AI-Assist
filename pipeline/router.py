@@ -9,10 +9,12 @@ Output: {intent, complexity, needs_eu, needs_sk, rewritten_query, language, skip
 """
 import json
 import logging
+import re
 from typing import Dict, List, Optional
 
 from services.llm_client import llm_call
 from services.language_service import LanguageService
+from services.supabase_service import log_audit
 from config import cfg
 
 logger = logging.getLogger(__name__)
@@ -51,7 +53,16 @@ async def route(query: str, conversation_history: Optional[List[Dict]] = None) -
     query_lower = query.lower().strip()
 
     # L0: Rule-based fast-path
-    if any(p in query_lower for p in GREETING_PATTERNS):
+    # Use word-boundary matching to avoid false positives
+    # e.g. "hi" must not match inside "prohibition", "this", "which"
+    def _has_word(text: str, patterns: set) -> bool:
+        for p in patterns:
+            if re.search(r"\b" + re.escape(p) + r"\b", text):
+                return True
+        return False
+
+    # Only match if query is short (≤6 words) — long queries are almost never greetings
+    if len(query_lower.split()) <= 6 and _has_word(query_lower, GREETING_PATTERNS):
         return {
             "intent": "greeting",
             "complexity": "simple",
@@ -62,7 +73,7 @@ async def route(query: str, conversation_history: Optional[List[Dict]] = None) -
             "skip_search": True,
         }
 
-    if any(p in query_lower for p in OFFTOPIC_PATTERNS):
+    if len(query_lower.split()) <= 4 and _has_word(query_lower, OFFTOPIC_PATTERNS):
         return {
             "intent": "offtopic",
             "complexity": "simple",
@@ -97,6 +108,16 @@ async def route(query: str, conversation_history: Optional[List[Dict]] = None) -
         ],
         response_format="json",
         max_tokens=300,
+    )
+
+    log_audit(
+        action="router",
+        model=result.get("model"),
+        provider=result.get("provider"),
+        input_tokens=result.get("input_tokens"),
+        output_tokens=result.get("output_tokens"),
+        latency_ms=result.get("latency_ms"),
+        metadata={"query_length": len(query)},
     )
 
     try:

@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from api.routes import chat, documents, search, health
+from api.routes import chat, documents, search, health, monitoring
 
 # stdout logging (Cloud Run collects automatically)
 logging.basicConfig(
@@ -65,6 +65,7 @@ app.include_router(health.router, prefix="/api/v1", tags=["Health"])
 app.include_router(chat.router, prefix="/api/v1", tags=["Chat"])
 app.include_router(documents.router, prefix="/api/v1", tags=["Documents"])
 app.include_router(search.router, prefix="/api/v1", tags=["Search"])
+app.include_router(monitoring.router, prefix="/api/v1", tags=["Monitoring"])
 
 
 @app.exception_handler(Exception)
