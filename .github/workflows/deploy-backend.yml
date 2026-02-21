@@ -1,17 +1,8 @@
 name: Deploy Backend to Cloud Run
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'api/**'
-      - 'services/**'
-      - 'pipeline/**'
-      - 'config/**'
-      - 'main.py'
-      - 'requirements.txt'
-      - 'Dockerfile'
   workflow_dispatch:
+  # Auto-trigger disabled until secrets configured
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
